@@ -99,8 +99,22 @@ try {
 }
 if (!stat.isFile()) pass();
 
+/**
+ * A subagent's tool calls arrive with the parent's session_id and even the
+ * parent's transcript_path, but with an agent_id of their own. Keying state by
+ * the session alone therefore pools the parent and every subagent into one
+ * ledger — which is how a subagent inherits a budget it never spent, or gets
+ * told it already has a file it has never seen. Each agent has its own context,
+ * so each agent gets its own ledger.
+ */
+function ledgerKey(input) {
+  const session = String(input.session_id || 'nosession');
+  const agent = input.agent_id ? `-agent-${input.agent_id}` : '';
+  return `${session}${agent}`.replace(/[^\w.-]/g, '_');
+}
+
 const ledgerDir = process.env.CLAUDE_PLUGIN_DATA || join(tmpdir(), 'file-budget');
-const ledgerFile = join(ledgerDir, `reads-${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.json`);
+const ledgerFile = join(ledgerDir, `reads-${ledgerKey(input)}.json`);
 let ledger = {};
 try {
   ledger = JSON.parse(readFileSync(ledgerFile, 'utf8'));

@@ -55,6 +55,14 @@ a `sed` of a file already read is a duplicate like any other. Commands with a
 pipe, a redirect or a chain are left alone — guessing at those is how a guard
 starts blocking real work.
 
+### State is per agent, not per session
+
+A subagent's tool calls arrive with the parent's `session_id` and even the parent's
+`transcript_path`, but with an `agent_id` of its own. Keying on the session alone
+would pool a parent and all its subagents into one ledger, so a subagent would be
+told it already has a file it has never seen — its context is separate, and the
+contents are genuinely not there. Ledgers are keyed on session and agent together.
+
 ### It refuses each file at most once
 
 If the model asks again after a refusal, the read goes through. It has a reason
