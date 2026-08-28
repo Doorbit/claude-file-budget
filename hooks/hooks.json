@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/file-guard.mjs\"",
+            "statusMessage": "Datei-Budget prüfen"
+          }
+        ]
+      }
+    ]
+  }
+}

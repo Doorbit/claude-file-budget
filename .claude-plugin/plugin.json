@@ -1,0 +1,35 @@
+{
+  "name": "file-budget",
+  "displayName": "File Read Budget",
+  "version": "0.1.0",
+  "description": "Stops the same unchanged file from being read into the conversation twice, and says what a large read is about to cost.",
+  "author": { "name": "Doorbit" },
+  "homepage": "https://github.com/Doorbit/claude-file-budget",
+  "repository": "https://github.com/Doorbit/claude-file-budget",
+  "keywords": ["tokens", "context", "cost", "read", "files"],
+  "license": "MIT",
+  "userConfig": {
+    "large_file_tokens": {
+      "type": "number",
+      "title": "Large-file threshold (tokens)",
+      "description": "Reads expected to cost more than this get a note saying what they cost and how to ask for less. The read itself always goes through.",
+      "min": 500,
+      "max": 100000,
+      "default": 6000
+    },
+    "dedupe_window_minutes": {
+      "type": "number",
+      "title": "Duplicate-read window (minutes)",
+      "description": "How long a file counts as already-read. Older entries expire, so a long session can re-read a file it has genuinely lost track of.",
+      "min": 5,
+      "max": 1440,
+      "default": 120
+    },
+    "enforcement": {
+      "type": "string",
+      "title": "Enforcement level",
+      "description": "'block' refuses a duplicate read of an unchanged file. 'warn' only explains. 'off' disables the guard.",
+      "default": "block"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "file-budget",
+  "description": "Context-budget tooling for file reads",
+  "owner": { "name": "Doorbit" },
+  "plugins": [
+    {
+      "name": "file-budget",
+      "displayName": "File Read Budget",
+      "description": "Stops the same unchanged file from being read into the conversation twice, and says what a large read is about to cost.",
+      "version": "0.1.0",
+      "category": "productivity",
+      "source": "./"
+    }
+  ]
+}
