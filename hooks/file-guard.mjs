@@ -22,9 +22,17 @@ import { readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
+/** A misconfigured number must not disable the guard silently. Number('abc') is
+ *  NaN, and every comparison against NaN is false, so an unvalidated setting
+ *  turns every rule into a no-op while the hook still exits cleanly. */
+function num(name, fallback) {
+  const parsed = Number(process.env[`CLAUDE_PLUGIN_OPTION_${name}`]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 const MODE = (process.env.CLAUDE_PLUGIN_OPTION_ENFORCEMENT || 'block').toLowerCase();
-const LARGE_TOKENS = Number(process.env.CLAUDE_PLUGIN_OPTION_LARGE_FILE_TOKENS || 6000);
-const WINDOW_MS = Number(process.env.CLAUDE_PLUGIN_OPTION_DEDUPE_WINDOW_MINUTES || 120) * 60_000;
+const LARGE_TOKENS = num('LARGE_FILE_TOKENS', 6000);
+const WINDOW_MS = num('DEDUPE_WINDOW_MINUTES', 120) * 60_000;
 
 function emit(payload) {
   process.stdout.write(JSON.stringify({
@@ -115,21 +123,30 @@ function ledgerKey(input) {
 
 const ledgerDir = process.env.CLAUDE_PLUGIN_DATA || join(tmpdir(), 'file-budget');
 const ledgerFile = join(ledgerDir, `reads-${ledgerKey(input)}.json`);
+const now = Date.now();
+
 let ledger = {};
 try {
   ledger = JSON.parse(readFileSync(ledgerFile, 'utf8'));
 } catch {
   /* first read of the session */
 }
-
-const now = Date.now();
+// Drop what has aged out. Without this the ledger only ever grows, and it is
+// parsed and rewritten on every single read and Bash call for the life of the
+// session.
+for (const [k, v] of Object.entries(ledger)) {
+  if (!v || now - v.at >= WINDOW_MS) delete ledger[k];
+}
 const key = `${t.path}::${t.slice}`;
 const prev = ledger[key];
 const unchanged = prev && prev.mtime === stat.mtimeMs && prev.size === stat.size;
 const fresh = prev && now - prev.at < WINDOW_MS;
 
 function remember(extra = {}) {
-  ledger[key] = { mtime: stat.mtimeMs, size: stat.size, at: now, ...extra };
+  // Carry `denied` forward. Overwriting the entry wholesale dropped it, which
+  // turned "refused at most once" into refusing every second read, for ever.
+  const denied = prev?.denied || extra.denied ? { denied: true } : {};
+  ledger[key] = { mtime: stat.mtimeMs, size: stat.size, at: now, ...denied, ...extra };
   try {
     mkdirSync(ledgerDir, { recursive: true });
     writeFileSync(ledgerFile, JSON.stringify(ledger));

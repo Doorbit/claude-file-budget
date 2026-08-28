@@ -10,7 +10,7 @@
       "name": "file-budget",
       "displayName": "File Read Budget",
       "description": "Stops the same unchanged file from being read into the conversation twice, and says what a large read is about to cost.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "category": "productivity",
       "source": "./"
     }

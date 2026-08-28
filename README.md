@@ -63,12 +63,17 @@ would pool a parent and all its subagents into one ledger, so a subagent would b
 told it already has a file it has never seen — its context is separate, and the
 contents are genuinely not there. Ledgers are keyed on session and agent together.
 
-### It refuses each file at most once
+### It refuses each file at most once per window
 
 If the model asks again after a refusal, the read goes through. It has a reason
 the hook cannot see — the conversation may have been compacted and the contents
 genuinely lost. A guard that insists in that situation strands the session, which
-is worse than the tokens it saves. Entries also expire after the dedupe window.
+is worse than the tokens it saves.
+
+The refusal flag is carried forward for as long as the entry lives, so a file that
+keeps being read is refused exactly once. Entries untouched for the dedupe window
+are dropped, both to bound the ledger and because after that long a session may
+legitimately no longer hold the contents.
 
 ## Install
 
@@ -89,7 +94,7 @@ claude plugin details file-budget    # expect one PreToolUse hook, ~0 standing c
 |---|---|---|
 | `large_file_tokens` | 6000 | Above this, a read gets a note about its cost. |
 | `dedupe_window_minutes` | 120 | How long a file counts as already-read. |
-| `enforcement` | `block` | `block`, `warn` or `off`. |
+| `enforcement` | `block` | `block` refuses duplicates, `warn` only explains, `off` disables. |
 
 ## Verify it is working
 
