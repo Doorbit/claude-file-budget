@@ -33,8 +33,11 @@ function emit(payload) {
   process.exit(0);
 }
 const pass = () => process.exit(0);
+/** Informational only: deliberately no permissionDecision. A hook that exists to
+ *  count tokens has no business granting a permission the user might otherwise
+ *  be asked about. */
 function note(text) {
-  emit({ permissionDecision: 'allow', additionalContext: text });
+  emit({ additionalContext: text });
 }
 function refuse(reason) {
   if (MODE === 'warn') emit({ additionalContext: reason });
@@ -51,6 +54,9 @@ if (!input || MODE === 'off') pass();
 
 const args = input.tool_input || {};
 
+const sliceKey = (offset, limit) =>
+  offset === undefined && limit === undefined ? 'whole' : `${offset ?? 0}+${limit ?? 'end'}`;
+
 /** Which file is this call about, and which slice of it? */
 function target() {
   if (input.tool_name === 'Read') {
@@ -61,21 +67,27 @@ function target() {
   // Anything with a pipe, redirect or chain is doing more than reading a file,
   // and guessing at it is how a guard starts blocking legitimate work.
   if (/[|><]|&&|\|\||;|\$\(/.test(cmd)) return null;
-  const m =
-    cmd.match(/^\s*sed\s+-n\s+(?:'|")?(\d+),(\d+)p(?:'|")?\s+(\S+)\s*$/) ??
-    cmd.match(/^\s*(?:head|tail)\s+-n\s+(\d+)\s+(\S+)\s*$/) ??
-    cmd.match(/^\s*cat\s+(\S+)\s*$/);
+  const sed = cmd.match(/^\s*sed\s+-n\s+(?:'|")?(\d+),(\d+)p(?:'|")?\s+(\S+)\s*$/);
+  const headTail = cmd.match(/^\s*(head|tail)\s+-n\s+(\d+)\s+(\S+)\s*$/);
+  const whole = cmd.match(/^\s*cat\s+(\S+)\s*$/);
+  const m = sed ?? headTail ?? whole;
   if (!m) return null;
   const path = m[m.length - 1].replace(/^['"]|['"]$/g, '');
   if (!path.startsWith('/')) return null; // relative paths are ambiguous across cwds
-  const slice = m.length === 4 ? sliceKey(Number(m[1]), Number(m[2]) - Number(m[1]) + 1)
-    : m.length === 3 ? sliceKey(0, Number(m[1]))
-    : sliceKey(undefined, undefined);
+
+  let slice;
+  if (sed) {
+    slice = sliceKey(Number(sed[1]), Number(sed[2]) - Number(sed[1]) + 1);
+  } else if (headTail) {
+    // `head -n 50` is the same content as `sed -n '1,50p'`, so give it the same
+    // key. `tail -n 50` is the opposite end of the file and must not collide
+    // with it — counting from the end needs a key of its own.
+    slice = headTail[1] === 'head' ? sliceKey(1, Number(headTail[2])) : `last${headTail[2]}`;
+  } else {
+    slice = sliceKey(undefined, undefined);
+  }
   return { path, slice, via: cmd.trim().split(/\s+/)[0] };
 }
-const sliceKey = (offset, limit) =>
-  offset === undefined && limit === undefined ? 'whole' : `${offset ?? 0}+${limit ?? 'end'}`;
-
 const t = target();
 if (!t?.path) pass();
 

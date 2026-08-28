@@ -1,12 +1,20 @@
 {
   "name": "file-budget",
   "displayName": "File Read Budget",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Stops the same unchanged file from being read into the conversation twice, and says what a large read is about to cost.",
-  "author": { "name": "Doorbit" },
+  "author": {
+    "name": "Doorbit"
+  },
   "homepage": "https://github.com/Doorbit/claude-file-budget",
   "repository": "https://github.com/Doorbit/claude-file-budget",
-  "keywords": ["tokens", "context", "cost", "read", "files"],
+  "keywords": [
+    "tokens",
+    "context",
+    "cost",
+    "read",
+    "files"
+  ],
   "license": "MIT",
   "userConfig": {
     "large_file_tokens": {
