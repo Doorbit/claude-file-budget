@@ -15,23 +15,36 @@ On the machine this plugin was built for:
 
 | | |
 |---|---|
-| Read into conversations | 30.2M tokens over 19,298 reads |
-| **Repeated in the same session** | **6.1M tokens (20%) over 5,406 reads** |
+| Read into conversations | 30.2M tokens over 19,332 reads |
 | Carried — re-sent on every later request | 10.2B (**338×**) |
+| **Re-read at the same range** | **593k tokens (2%) over 615 reads** |
 | Largest single read | 17,357 tokens, one file |
 
 Across every tool in those transcripts, file reading accounted for **60% of
 everything written into context** — more than every MCP integration combined.
 
-Two failure modes drive it, and neither is a compression problem:
+Be careful with that 2%. An earlier version of the report counted a repeat by
+path alone and produced 20%; most of that turned out to be reads of *different*
+ranges of the same file, which are not duplicates and are never refused. The
+honest figure for what deduplication alone can recover is the small one, and it
+is an upper bound even then, because the guard also requires the file to be
+unchanged.
 
-**The same unchanged file is read again.** One file was read 495 times, another
-549. Whenever the file has not changed since the last read, its contents are
-already in the conversation; the second copy buys nothing and is then re-sent on
-every following request.
+So the refusal is the smaller half of this plugin. The larger half is the
+annotation: single reads reaching 17,357 tokens, and files like `GameScreen.tsx`
+read 477 times for 1.03M tokens in total. Almost none of those are literal
+duplicates — they are a file being read whole, over and over, for one symbol at a
+time. No refusal can fix that; only reading less can, which is what the note is
+for.
 
-**A whole large file is read when a few lines were the question.** Ten reads of
-a 17,000-token file cost more than a thousand ordinary tool calls.
+Two failure modes drive the cost, and neither is a compression problem:
+
+**The same unchanged file is read again at the same range.** Its contents are
+already in the conversation, so the second copy buys nothing and is then re-sent
+on every following request.
+
+**A whole large file is read when a few lines were the question.** Ten reads of a
+17,000-token file cost more than a thousand ordinary tool calls.
 
 This is worth stating plainly because it is easy to reach for the wrong tool:
 output compressors do excellent work on structured output — one such tool
@@ -41,9 +54,9 @@ strip. The waste is in the request, not in the representation.
 
 ## What the plugin does
 
-**Refuses a duplicate read of an unchanged file.** Same path, same range, same
-size, same mtime, within the dedupe window. The refusal says when the file was
-read and how to get a different part.
+**Challenges a duplicate read of an unchanged file.** Same path, same range,
+same size, same mtime, within the dedupe window. The refusal says when the file
+was read and how to get a different part.
 
 **Annotates a large read** with what it is about to cost and how to ask for less.
 The read always goes through — only the caller knows how much of the file the
@@ -63,17 +76,17 @@ would pool a parent and all its subagents into one ledger, so a subagent would b
 told it already has a file it has never seen — its context is separate, and the
 contents are genuinely not there. Ledgers are keyed on session and agent together.
 
-### It refuses each file at most once per window
+### Insisting always wins
 
-If the model asks again after a refusal, the read goes through. It has a reason
-the hook cannot see — the conversation may have been compacted and the contents
-genuinely lost. A guard that insists in that situation strands the session, which
-is worse than the tokens it saves.
+A duplicate is refused once; if the very next call asks for the same thing again,
+it goes through. The model has a reason the hook cannot see — the conversation may
+have been compacted and the contents genuinely lost — and a guard that keeps
+saying no strands the session, which costs more than the tokens it saves.
 
-The refusal flag is carried forward for as long as the entry lives, so a file that
-keeps being read is refused exactly once. Entries untouched for the dedupe window
-are dropped, both to bound the ledger and because after that long a session may
-legitimately no longer hold the contents.
+Refusing only once *ever* was the previous design, and it was far too weak: on a
+file read 495 times it recovered a single duplicate. Challenging each duplicate
+and yielding to insistence keeps the safety property while actually catching the
+pattern.
 
 ## Install
 

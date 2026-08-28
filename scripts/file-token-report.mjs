@@ -12,7 +12,7 @@
  */
 
 import { readdirSync, statSync, createReadStream } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 
@@ -85,8 +85,18 @@ for (const project of readdirSync(ROOT, { withFileTypes: true }).filter((d) => d
         }
 
         bump(byTool, name === 'Read' ? 'Read' : String(input.command).trim().split(/\s+/)[0], tokens);
-        bump(byFile, basename(path), tokens);
-        if (seen.has(path)) { repeatTok += tokens; repeatN++; } else { seen.add(path); firstTok += tokens; firstN++; }
+        // Keyed on the full path: basenames merge every index.ts and every
+        // CLAUDE.md in a monorepo into one row, which turns a handful of reads
+        // of many files into a fake duplicate-read problem.
+        bump(byFile, path, tokens);
+        // Counted per path AND range, matching how the guard keys its ledger.
+        // It still cannot see mtime, so a read after an edit counts here and
+        // would not be refused — this is an upper bound on what is recoverable.
+        const range = name === 'Read'
+          ? `${input.offset ?? 1}+${input.limit ?? 'end'}`
+          : String(input.command).trim();
+        const seenKey = `${path}::${range}`;
+        if (seen.has(seenKey)) { repeatTok += tokens; repeatN++; } else { seen.add(seenKey); firstTok += tokens; firstN++; }
         if (tokens > 6000) biggest.push([tokens, path]);
         events.push([turn, tokens]);
       }
@@ -100,7 +110,8 @@ const total = firstTok + repeatTok;
 console.log(`\nFile read report${SINCE ? ` (since ${SINCE})` : ''}${PROJECT ? ` [project ~ ${PROJECT}]` : ''}`);
 console.log(`  read into conversations   ${n(total)} tokens from ${n(firstN + repeatN)} reads`);
 console.log(`  first time                ${n(firstTok)} (${Math.round((firstTok / Math.max(total, 1)) * 100)}%) over ${n(firstN)} reads`);
-console.log(`  repeated in same session  ${n(repeatTok)} (${Math.round((repeatTok / Math.max(total, 1)) * 100)}%) over ${n(repeatN)} reads`);
+console.log(`  repeated, same range      ${n(repeatTok)} (${Math.round((repeatTok / Math.max(total, 1)) * 100)}%) over ${n(repeatN)} reads
+                            (upper bound: a read after an edit counts here but is never refused)`);
 console.log(`  carried (re-sent)         ${n(carried)}  ->  ${(carried / Math.max(total, 1)).toFixed(0)}x`);
 
 const top = (map, k) => [...map.entries()].sort((a, b) => b[1].tokens - a[1].tokens).slice(0, k);
@@ -108,9 +119,9 @@ console.log('\n  entry point            reads       tokens     avg');
 for (const [name, r] of top(byTool, 8))
   console.log(`  ${name.padEnd(22)}${String(r.n).padStart(6)}${n(r.tokens).padStart(13)}${n(Math.round(r.tokens / r.n)).padStart(8)}`);
 
-console.log('\n  file                                 reads       tokens');
-for (const [name, r] of top(byFile, 10))
-  console.log(`  ${name.slice(0, 36).padEnd(37)}${String(r.n).padStart(6)}${n(r.tokens).padStart(13)}`);
+console.log('\n  file                                              reads       tokens');
+for (const [path, r] of top(byFile, 10))
+  console.log(`  ${path.slice(-48).padEnd(49)}${String(r.n).padStart(6)}${n(r.tokens).padStart(13)}`);
 
 if (biggest.length) {
   biggest.sort((a, b) => b[0] - a[0]);
