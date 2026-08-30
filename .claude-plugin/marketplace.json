@@ -8,9 +8,9 @@
   "plugins": [
     {
       "name": "file-budget",
-      "displayName": "File Read Budget",
-      "description": "Stops the same unchanged file from being read into the conversation twice, and says what a large read is about to cost.",
-      "version": "0.4.0",
+      "displayName": "Large Read Notice",
+      "description": "Says what a large file read is about to cost, before it happens.",
+      "version": "0.5.0",
       "category": "productivity",
       "source": "./"
     }

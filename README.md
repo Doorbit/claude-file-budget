@@ -1,92 +1,55 @@
-# File Read Budget
+# Large Read Notice
 
-A Claude Code plugin for the largest, quietest consumer of conversation context:
-reading files.
+A Claude Code plugin that says what a large file read is about to cost, before it
+happens.
 
-## The problem, measured
+## Why
 
-Run the included report against your own transcripts:
+Reading files is the largest single consumer of conversation context — in the
+transcripts this was built from, **60% of everything written into context**, more
+than every MCP integration combined. Anything a tool returns is re-sent with every
+following request, so a 17,000-token file read in the first minute is paid for
+again on every turn after it.
 
-```bash
-node scripts/file-token-report.mjs
-```
+Almost all of that is *first* reads: a whole large file pulled in for one symbol.
+One file was read 477 times for 1.03M tokens in total — hardly any of them literal
+duplicates, just the same file read whole, over and over, for one thing at a time.
 
-On the machine this plugin was built for:
+This is not a compression problem. An output compressor measured 99% savings on
+`git diff` and 77% on test output, but only **2.3%** on file reads: source code has
+no boilerplate to strip. The waste is in asking for the whole file, and only the
+caller can decide not to.
 
-| | |
-|---|---|
-| Read into conversations | 30.2M tokens over 19,332 reads |
-| Carried — re-sent on every later request | 10.2B (**338×**) |
-| **Re-read at the same range** | **593k tokens (2%) over 615 reads** |
-| Largest single read | 17,357 tokens, one file |
+So this plugin does one thing. Before a whole-file `Read` that will cost more than
+the threshold, it puts the number in front of the model:
 
-Across every tool in those transcripts, file reading accounted for **60% of
-everything written into context** — more than every MCP integration combined.
+> `src/screens/GameScreen.tsx` is about 17,357 tokens. Reading it whole puts all of
+> that in the conversation for the rest of the session, re-sent on every following
+> request. If you are after one symbol or one section, grep for it and read the
+> surrounding range with offset and limit instead.
 
-Be careful with that 2%. An earlier version of the report counted a repeat by
-path alone and produced 20%; most of that turned out to be reads of *different*
-ranges of the same file, which are not duplicates and are never refused. The
-honest figure for what deduplication alone can recover is the small one, and it
-is an upper bound even then, because the guard also requires the file to be
-unchanged.
+The read always goes through. The hook never refuses anything, never grants a
+permission, and writes nothing to disk.
 
-So the refusal is the smaller half of this plugin. The larger half is the
-annotation: single reads reaching 17,357 tokens, and files like `GameScreen.tsx`
-read 477 times for 1.03M tokens in total. Almost none of those are literal
-duplicates — they are a file being read whole, over and over, for one symbol at a
-time. No refusal can fix that; only reading less can, which is what the note is
-for.
+## What it used to do, and why it stopped
 
-Two failure modes drive the cost, and neither is a compression problem:
+It also refused duplicate reads of unchanged files. That was built on a
+measurement error: the report counted a repeat by path alone, so reads of
+*different ranges* of the same file counted as waste. Corrected to count by path
+and range, the recoverable share fell from 20% to 2% — and in two days of real use
+the refusals saved about 6,000 tokens.
 
-**The same unchanged file is read again at the same range.** Its contents are
-already in the conversation, so the second copy buys nothing and is then re-sent
-on every following request.
+Worse, the duplicates it did not catch turned out not to be duplicates at all: a
+growing task-output file being polled, and images being regenerated between reads.
+The rule was right to let them through, which left almost nothing for it to do.
 
-**A whole large file is read when a few lines were the question.** Ten reads of a
-17,000-token file cost more than a thousand ordinary tool calls.
+Three review rounds went into getting that rule correct — the refusal alternated
+forever at one point, and `tail` was refused as a duplicate of `head` at another.
+For 0.2%, it was not worth the ways it could go wrong. It is gone, along with the
+ledger, the concurrency handling and the per-agent state it needed.
 
-This is worth stating plainly because it is easy to reach for the wrong tool:
-output compressors do excellent work on structured output — one such tool
-measured 99% savings on `git diff` and 77% on test output — but only **2.3%** on
-file reads. Source code does not compress, because there is no boilerplate to
-strip. The waste is in the request, not in the representation.
-
-## What the plugin does
-
-**Challenges a duplicate read of an unchanged file.** Same path, same range,
-same size, same mtime, within the dedupe window. The refusal says when the file
-was read and how to get a different part.
-
-**Annotates a large read** with what it is about to cost and how to ask for less.
-The read always goes through — only the caller knows how much of the file the
-task needs.
-
-**Covers Bash reads too.** `sed -n '10,80p' file`, `head`, `tail` and `cat` put
-the same bytes into the conversation that `Read` does, so they share one ledger:
-a `sed` of a file already read is a duplicate like any other. Commands with a
-pipe, a redirect or a chain are left alone — guessing at those is how a guard
-starts blocking real work.
-
-### State is per agent, not per session
-
-A subagent's tool calls arrive with the parent's `session_id` and even the parent's
-`transcript_path`, but with an `agent_id` of its own. Keying on the session alone
-would pool a parent and all its subagents into one ledger, so a subagent would be
-told it already has a file it has never seen — its context is separate, and the
-contents are genuinely not there. Ledgers are keyed on session and agent together.
-
-### Insisting always wins
-
-A duplicate is refused once; if the very next call asks for the same thing again,
-it goes through. The model has a reason the hook cannot see — the conversation may
-have been compacted and the contents genuinely lost — and a guard that keeps
-saying no strands the session, which costs more than the tokens it saves.
-
-Refusing only once *ever* was the previous design, and it was far too weak: on a
-file read 495 times it recovered a single duplicate. Challenging each duplicate
-and yielding to insistence keeps the safety property while actually catching the
-pattern.
+`Read` only, for the same reason: covering Bash meant running a process on every
+Bash call, and only 2.6% of them read a file.
 
 ## Install
 
@@ -95,27 +58,21 @@ claude plugin marketplace add Doorbit/claude-file-budget
 claude plugin install file-budget@file-budget --scope user
 ```
 
-User scope applies it to every project on the machine.
-
-```bash
-claude plugin details file-budget    # expect one PreToolUse hook, ~0 standing cost
-```
-
-## Configure
-
 | Option | Default | Effect |
 |---|---|---|
-| `large_file_tokens` | 6000 | Above this, a read gets a note about its cost. |
-| `dedupe_window_minutes` | 120 | How long a file counts as already-read. |
-| `enforcement` | `block` | `block` refuses duplicates, `warn` only explains, `off` disables. |
+| `large_file_tokens` | 6000 | Reads estimated above this get the note. |
+| `enforcement` | `on` | `on` or `off`. Nothing is ever refused. |
 
-## Verify it is working
+## Measuring
 
 ```bash
-node scripts/file-token-report.mjs --since 2026-09
+node scripts/file-token-report.mjs [--since YYYY-MM]
 ```
 
-Compare the repeated-read share against a period before installation.
+Reports what file reading costs you across your own transcripts: total, carried,
+per entry point, per file, and the largest single reads. The number to watch under
+this plugin is the average tokens per `Read` — if it does not fall over a few
+weeks, the note is not changing behaviour and you should turn it off.
 
 ## License
 

@@ -1,8 +1,8 @@
 {
   "name": "file-budget",
-  "displayName": "File Read Budget",
-  "version": "0.4.0",
-  "description": "Stops the same unchanged file from being read into the conversation twice, and says what a large read is about to cost.",
+  "displayName": "Large Read Notice",
+  "version": "0.5.0",
+  "description": "Says what a large file read is about to cost, before it happens.",
   "author": {
     "name": "Doorbit"
   },
@@ -25,19 +25,11 @@
       "max": 100000,
       "default": 6000
     },
-    "dedupe_window_minutes": {
-      "type": "number",
-      "title": "Duplicate-read window (minutes)",
-      "description": "How long a file counts as already-read. Older entries expire, so a long session can re-read a file it has genuinely lost track of.",
-      "min": 5,
-      "max": 1440,
-      "default": 120
-    },
     "enforcement": {
       "type": "string",
-      "title": "Enforcement level",
-      "description": "'block' refuses a duplicate read of an unchanged file. 'warn' only explains. 'off' disables the guard.",
-      "default": "block"
+      "title": "Enabled",
+      "description": "'on' annotates large reads, 'off' disables the hook. Nothing is ever refused.",
+      "default": "on"
     }
   }
 }
