@@ -11,7 +11,7 @@
  * which is what actually fills a context window.
  */
 
-import { readdirSync, statSync, createReadStream } from 'node:fs';
+import { readdirSync, statSync, createReadStream, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
@@ -128,4 +128,38 @@ if (biggest.length) {
   console.log('\n  single reads over 6k tokens');
   for (const [tokens, path] of biggest.slice(0, 6)) console.log(`  ${n(tokens).padStart(9)}  ${path.slice(-64)}`);
 }
+// The hook's own log. additionalContext never reaches the transcript, so a
+// firing is invisible from the outside — without this there is no telling a hook
+// that fires from one that is silently broken.
+const noticeDirs = [
+  join(homedir(), '.claude', 'plugins', 'data', 'file-budget-file-budget', 'notices.jsonl'),
+  join(process.env.TMPDIR ?? '/tmp', 'file-budget', 'notices.jsonl'),
+];
+const notices = [];
+for (const file of noticeDirs) {
+  try {
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const rec = JSON.parse(line);
+        if (!SINCE || (rec.at ?? '').slice(0, 7) >= SINCE) notices.push(rec);
+      } catch { /* skip a torn line */ }
+    }
+  } catch { /* no log yet */ }
+}
+if (notices.length) {
+  const perPath = new Map();
+  let sum = 0;
+  for (const rec of notices) {
+    sum += rec.tokens ?? 0;
+    perPath.set(rec.path, (perPath.get(rec.path) ?? 0) + 1);
+  }
+  console.log(`\n  large-read notices fired      ${n(notices.length)}, flagging ${n(sum)} tokens`);
+  console.log(`  distinct files                ${n(perPath.size)}`);
+  const worst = [...perPath.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  for (const [path, count] of worst) console.log(`    ${String(count).padStart(4)}x  ${path.slice(-58)}`);
+} else {
+  console.log('\n  large-read notices fired      none recorded (log empty or plugin not installed)');
+}
+
 console.log('');

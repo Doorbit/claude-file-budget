@@ -1,7 +1,7 @@
 {
   "name": "file-budget",
   "displayName": "Large Read Notice",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Says what a large file read is about to cost, before it happens.",
   "author": {
     "name": "Doorbit"
@@ -20,10 +20,10 @@
     "large_file_tokens": {
       "type": "number",
       "title": "Large-file threshold (tokens)",
-      "description": "Reads expected to cost more than this get a note saying what they cost and how to ask for less. The read itself always goes through.",
+      "description": "Reads estimated above this get the note. The measured average for a whole-file read is about 2,150 tokens, so 3000 catches the upper half of them.",
       "min": 500,
       "max": 100000,
-      "default": 6000
+      "default": 3000
     },
     "enforcement": {
       "type": "string",

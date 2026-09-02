@@ -60,7 +60,7 @@ claude plugin install file-budget@file-budget --scope user
 
 | Option | Default | Effect |
 |---|---|---|
-| `large_file_tokens` | 6000 | Reads estimated above this get the note. |
+| `large_file_tokens` | 3000 | Reads estimated above this get the note. The measured average for a whole-file read is ~2,150 tokens, so 3000 catches the upper half. |
 | `enforcement` | `on` | `on` or `off`. Nothing is ever refused. |
 
 ## Measuring
@@ -70,9 +70,18 @@ node scripts/file-token-report.mjs [--since YYYY-MM]
 ```
 
 Reports what file reading costs you across your own transcripts: total, carried,
-per entry point, per file, and the largest single reads. The number to watch under
-this plugin is the average tokens per `Read` — if it does not fall over a few
-weeks, the note is not changing behaviour and you should turn it off.
+per entry point, per file, and the largest single reads.
+
+It also reads the hook's own log of firings. That log exists because
+`additionalContext` never reaches the transcript: from the outside there is no way
+to tell a hook that fires ten times from one that is silently broken, which is
+exactly the position this plugin was in before the log was added. Only firings are
+written, so it stays off the hot path.
+
+Two numbers decide whether to keep this installed. **Notices fired** says the hook
+is working at all. **Average tokens per `Read`** says whether it changes anything —
+if that does not fall over a few weeks while notices keep firing, the model is
+reading whole files regardless and you should turn the plugin off.
 
 ## License
 

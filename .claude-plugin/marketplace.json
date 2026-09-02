@@ -10,7 +10,7 @@
       "name": "file-budget",
       "displayName": "Large Read Notice",
       "description": "Says what a large file read is about to cost, before it happens.",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "category": "productivity",
       "source": "./"
     }

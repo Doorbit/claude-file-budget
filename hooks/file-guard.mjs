@@ -23,8 +23,9 @@
  * nothing.
  */
 
-import { readFileSync, statSync } from 'node:fs';
-import { extname } from 'node:path';
+import { readFileSync, statSync, appendFileSync, mkdirSync } from 'node:fs';
+import { extname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 /** A misconfigured number must not disable the hook silently: Number('abc') is
  *  NaN, and every comparison against NaN is false. */
@@ -34,7 +35,7 @@ function num(name, fallback) {
 }
 
 const MODE = (process.env.CLAUDE_PLUGIN_OPTION_ENFORCEMENT || 'on').toLowerCase();
-const LARGE_TOKENS = num('LARGE_FILE_TOKENS', 6000);
+const LARGE_TOKENS = num('LARGE_FILE_TOKENS', 3000);
 
 // Byte count says nothing about what these cost to read: images are billed by
 // pixel area, PDFs and notebooks are paged. Estimating from size would produce
@@ -71,6 +72,30 @@ try {
 
 const estimate = Math.round(size / 4);
 if (estimate <= LARGE_TOKENS) process.exit(0);
+
+/**
+ * Record the firing. additionalContext never reaches the transcript, so without
+ * this there is no way to tell a hook that fires ten times from one that is
+ * silently broken — which is exactly the position this plugin was in before.
+ * Only firings are written, so this stays off the hot path.
+ */
+function record(entry) {
+  const dir = process.env.CLAUDE_PLUGIN_DATA || join(tmpdir(), 'file-budget');
+  try {
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, 'notices.jsonl'), JSON.stringify(entry) + '\n');
+  } catch {
+    /* the note matters more than the bookkeeping */
+  }
+}
+
+record({
+  at: new Date().toISOString(),
+  path,
+  tokens: estimate,
+  session: input.session_id ?? null,
+  agent: input.agent_id ?? null,
+});
 
 // Informational only: deliberately no permissionDecision. A hook that exists to
 // count tokens has no business granting or withholding a permission.
